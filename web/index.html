@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Car</title>
+  <style>
+    body{
+      background:#010409;
+      color:#00d4ff;
+      font-family:monospace;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      height:100vh;
+      margin:0;
+      gap:16px
+    }
+    h2{letter-spacing:4px;font-size:18px}
+    p{color:#aaa;font-size:12px;letter-spacing:2px}
+    a{
+      color:#00ff88;
+      letter-spacing:2px;
+      font-size:14px;
+      text-decoration:none;
+      border:1px solid #00ff88;
+      padding:8px 16px;
+    }
+    a:hover{
+      background:#00ff88;
+      color:#000;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>ESP32 SURVEILLANCE CAR</h2>
+
+  <p>WEBSOCKET ENDPOINTS ACTIVE</p>
+
+  <p>
+    ws://192.168.4.1/Camera |
+    ws://192.168.4.1/CarInput
+  </p>
+
+  <a href="esp32_surveillance_dashboard.html">
+    OPEN FULL DASHBOARD
+  </a>
+
+  <p style="font-size:10px;color:#444">
+    Or open dashboard manually and enter IP: 192.168.4.1
+  </p>
+
+</body>
+</html>

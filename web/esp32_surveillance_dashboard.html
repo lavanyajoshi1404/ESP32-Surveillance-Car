@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#010409" />
+<title>ESP32 Surveillance Control System</title>
+<link rel="manifest" href="manifest.json" />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<!-- NippleJS virtual joystick -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+<style>
+/* ═══════════════════════════════════════════
+   CSS VARIABLES & RESET
+═══════════════════════════════════════════ */
+:root {
+  --bg-void:        #010409;
+  --bg-panel:       rgba(6, 16, 32, 0.85);
+  --bg-glass:       rgba(0, 200, 255, 0.04);
+  --neon-cyan:      #00d4ff;
+  --neon-green:     #00ff88;
+  --neon-red:       #ff2244;
+  --neon-orange:    #ff7700;
+  --neon-dim:       rgba(0, 212, 255, 0.25);
+  --border-glow:    rgba(0, 212, 255, 0.3);
+  --text-primary:   #c8eeff;
+  --text-secondary: rgba(150, 210, 240, 0.6);
+  --text-muted:     rgba(100, 160, 190, 0.4);
+  --font-display:   'Orbitron', monospace;
+  --font-mono:      'Share Tech Mono', monospace;
+  --font-ui:        'Rajdhani', sans-serif;
+  --glow-sm:        0 0 8px rgba(0, 212, 255, 0.5);
+  --glow-md:        0 0 20px rgba(0, 212, 255, 0.4);
+  --glow-lg:        0 0 40px rgba(0, 212, 255, 0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* ═══════════════════════════════════════════
+   LOADING SCREEN
+═══════════════════════════════════════════ */
+#loadScreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg-void);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 24px;
+  transition: opacity 0.8s ease, visibility 0.8s ease;
+}
+#loadScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.load-logo {
+  font-family: var(--font-display);
+  font-size: clamp(14px, 3vw, 26px);
+  font-weight: 900; letter-spacing: 5px;
+  color: var(--neon-cyan); text-shadow: var(--glow-md);
+  animation: flicker 2s infinite;
+}
+.load-bar-wrap {
+  width: min(400px, 80vw); height: 3px;
+  background: rgba(0,212,255,0.1); border-radius: 2px; overflow: hidden;
+}
+.load-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+  box-shadow: var(--glow-sm);
+  animation: loadProgress 2.8s ease forwards;
+}
+.load-status {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-secondary); letter-spacing: 2px;
+}
+@keyframes loadProgress { from { width:0 } to { width:100% } }
+@keyframes flicker {
+  0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:0.4} 94%{opacity:1} 96%{opacity:0.6} 97%{opacity:1}
+}
+
+/* ═══════════════════════════════════════════
+   SCAN GRID BACKGROUND
+═══════════════════════════════════════════ */
+.scan-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.scan-line {
+  position: fixed; left: 0; right: 0; height: 2px; z-index: 0;
+  pointer-events: none; top: -2px;
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,0.12), transparent);
+  animation: scanMove 6s linear infinite;
+}
+@keyframes scanMove { from { top:-2px } to { top:100vh } }
+
+/* ═══════════════════════════════════════════
+   IP CONFIG OVERLAY
+═══════════════════════════════════════════ */
+#ipOverlay {
+  position: fixed; inset: 0; z-index: 8888;
+  background: rgba(0,5,15,0.96); backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+}
+#ipOverlay.hidden { display: none; }
+.ip-box {
+  border: 1px solid var(--border-glow);
+  background: var(--bg-panel); border-radius: 6px;
+  padding: 32px 36px; text-align: center;
+  box-shadow: var(--glow-lg); max-width: 380px; width: 90%;
+}
+.ip-title {
+  font-family: var(--font-display); font-size: 13px;
+  letter-spacing: 4px; color: var(--neon-cyan);
+  text-shadow: var(--glow-sm); margin-bottom: 6px;
+}
+.ip-sub { font-size: 12px; color: var(--text-secondary); margin-bottom: 20px; letter-spacing: 1px; }
+.ip-hint { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-bottom: 16px; letter-spacing: 1px; }
+.ip-hint span { color: var(--neon-green); }
+.ip-input {
+  width: 100%; padding: 10px 14px;
+  background: rgba(0,212,255,0.05);
+  border: 1px solid var(--border-glow); border-radius: 3px;
+  color: var(--neon-cyan); font-family: var(--font-mono);
+  font-size: 16px; letter-spacing: 2px;
+  text-align: center; outline: none; margin-bottom: 14px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.ip-input:focus { border-color: var(--neon-cyan); box-shadow: var(--glow-sm); }
+.ip-btn {
+  width: 100%; padding: 12px;
+  background: rgba(0,212,255,0.1);
+  border: 1px solid var(--neon-cyan); border-radius: 3px;
+  color: var(--neon-cyan); font-family: var(--font-display);
+  font-size: 11px; letter-spacing: 3px;
+  cursor: pointer; transition: all 0.2s;
+}
+.ip-btn:hover { background: rgba(0,212,255,0.2); box-shadow: var(--glow-md); }
+
+/* ═══════════════════════════════════════════
+   LAYOUT SHELL
+═══════════════════════════════════════════ */
+#app {
+  position: relative; z-index: 1; min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* ═══════════════════════════════════════════
+   TOP BAR
+═══════════════════════════════════════════ */
+#topBar {
+  display: flex; align-items: center; padding: 10px 16px;
+  background: rgba(0,10,25,0.92);
+  border-bottom: 1px solid var(--border-glow);
+  backdrop-filter: blur(12px); gap: 12px; flex-wrap: wrap;
+}
+.top-logo {
+  font-family: var(--font-display);
+  font-size: clamp(8px, 1.8vw, 13px); font-weight: 700;
+  letter-spacing: 2px; color: var(--neon-cyan);
+  text-shadow: var(--glow-sm); flex: 1; white-space: nowrap;
+}
+.top-logo span { color: var(--text-secondary); font-weight: 400; }
+.status-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border: 1px solid var(--border-glow);
+  border-radius: 2px; background: var(--bg-glass);
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 1px; color: var(--text-secondary);
+  backdrop-filter: blur(6px); transition: all 0.3s;
+}
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.pill.online .dot { background: var(--neon-green); box-shadow: 0 0 6px var(--neon-green); }
+.wifi-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+.wifi-bar { width: 3px; background: var(--neon-dim); border-radius: 1px; transition: background 0.3s; }
+.wifi-bar:nth-child(1){height:4px} .wifi-bar:nth-child(2){height:7px}
+.wifi-bar:nth-child(3){height:10px} .wifi-bar:nth-child(4){height:14px}
+.wifi-bars.sig-4 .wifi-bar { background: var(--neon-cyan); box-shadow: 0 0 4px var(--neon-cyan); }
+.wifi-bars.sig-3 .wifi-bar:nth-child(-n+3) { background: var(--neon-green); }
+.wifi-bars.sig-2 .wifi-bar:nth-child(-n+2) { background: var(--neon-orange); }
+.wifi-bars.sig-1 .wifi-bar:nth-child(1)    { background: var(--neon-red); }
+.sys-time {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--neon-cyan); text-shadow: var(--glow-sm);
+  letter-spacing: 2px; white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════
+   MAIN CONTENT — DESKTOP 2-COLUMN
+═══════════════════════════════════════════ */
+#mainContent {
+  display: grid;
+  grid-template-columns: 1fr 290px;
+  overflow: hidden;
+  height: calc(100vh - 50px - 50px);
+}
+
+/* ═══════════════════════════════════════════
+   CAMERA PANEL
+═══════════════════════════════════════════ */
+#cameraPanel {
+  position: relative; display: flex; flex-direction: column;
+  padding: 10px; border-right: 1px solid var(--border-glow);
+  overflow: hidden;
+}
+.cam-frame {
+  flex: 1; position: relative;
+  border: 1px solid var(--border-glow); border-radius: 4px;
+  background: #000; overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.8), var(--glow-sm);
+}
+/* Camera image rendered from WebSocket blob */
+#cameraFeed {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0.93; filter: contrast(1.05) saturate(0.9);
+}
+/* HUD Corners */
+.hud-corner { position: absolute; width: 24px; height: 24px; pointer-events: none; }
+.hud-corner::before, .hud-corner::after {
+  content: ''; position: absolute; background: var(--neon-cyan); box-shadow: var(--glow-sm);
+}
+.hud-corner.tl{top:8px;left:8px} .hud-corner.tl::before{top:0;left:0;width:20px;height:2px} .hud-corner.tl::after{top:0;left:0;width:2px;height:20px}
+.hud-corner.tr{top:8px;right:8px} .hud-corner.tr::before{top:0;right:0;width:20px;height:2px} .hud-corner.tr::after{top:0;right:0;width:2px;height:20px}
+.hud-corner.bl{bottom:8px;left:8px} .hud-corner.bl::before{bottom:0;left:0;width:20px;height:2px} .hud-corner.bl::after{bottom:0;left:0;width:2px;height:20px}
+.hud-corner.br{bottom:8px;right:8px} .hud-corner.br::before{bottom:0;right:0;width:20px;height:2px} .hud-corner.br::after{bottom:0;right:0;width:2px;height:20px}
+/* Crosshair */
+.crosshair {
+  position: absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:48px; height:48px; pointer-events:none;
+  animation: crosshairPulse 3s ease-in-out infinite;
+}
+.crosshair::before,.crosshair::after{content:'';position:absolute;background:rgba(0,212,255,0.5)}
+.crosshair::before{top:50%;left:0;right:0;height:1px;transform:translateY(-50%)}
+.crosshair::after{left:50%;top:0;bottom:0;width:1px;transform:translateX(-50%)}
+.crosshair-circle{position:absolute;inset:8px;border:1px solid rgba(0,212,255,0.4);border-radius:50%}
+@keyframes crosshairPulse{0%,100%{opacity:0.6}50%{opacity:1}}
+/* Camera Overlays */
+.cam-overlay { position:absolute; z-index:5; pointer-events:none; font-family:var(--font-mono); }
+.cam-timestamp {
+  top:14px; left:50%; transform:translateX(-50%);
+  font-size:11px; letter-spacing:2px;
+  color:rgba(0,212,255,0.85); text-shadow:0 0 8px var(--neon-cyan); white-space:nowrap;
+}
+.cam-rec {
+  top:14px; right:40px;
+  display:flex; align-items:center; gap:6px;
+  font-size:10px; letter-spacing:2px;
+  color:var(--neon-red); text-shadow:0 0 6px var(--neon-red);
+}
+.rec-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--neon-red); box-shadow:0 0 8px var(--neon-red);
+  animation:recBlink 1.2s ease-in-out infinite;
+}
+.rec-dot.paused{animation:none;opacity:0.3}
+@keyframes recBlink{0%,100%{opacity:1}50%{opacity:0.1}}
+.cam-coord{bottom:14px;left:40px;font-size:10px;color:rgba(0,212,255,0.5);letter-spacing:1px}
+.cam-fps{bottom:14px;right:40px;font-size:10px;color:rgba(0,212,255,0.5);letter-spacing:1px}
+.cam-scanlines {
+  position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+}
+/* No-feed placeholder */
+.no-feed-msg {
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:var(--font-mono);font-size:12px;letter-spacing:2px;
+  color:rgba(0,212,255,0.4);text-align:center;pointer-events:none;
+}
+/* Motion alert */
+.motion-alert {
+  position:absolute;top:50%;left:50%;z-index:10;
+  transform:translate(-50%,-50%);
+  font-family:var(--font-display);font-size:clamp(14px,2vw,20px);
+  letter-spacing:4px;color:var(--neon-red);text-shadow:0 0 20px var(--neon-red);
+  opacity:0;pointer-events:none;transition:opacity 0.3s;white-space:nowrap;
+}
+.motion-alert.visible{opacity:1;animation:alertFlash 0.5s ease infinite}
+@keyframes alertFlash{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ═══════════════════════════════════════════
+   SIDE CONTROL PANEL
+═══════════════════════════════════════════ */
+#sidePanel {
+  display: flex; flex-direction: column;
+  gap: 8px; padding: 10px 8px;
+  overflow-y: auto; scrollbar-width: thin;
+  scrollbar-color: var(--neon-dim) transparent;
+  background: rgba(2,8,20,0.6);
+}
+#sidePanel::-webkit-scrollbar{width:3px}
+#sidePanel::-webkit-scrollbar-thumb{background:var(--neon-dim);border-radius:2px}
+.panel-card {
+  background: var(--bg-panel); border: 1px solid var(--border-glow);
+  border-radius: 4px; padding: 10px 12px;
+  backdrop-filter: blur(10px); position: relative; overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  animation: fadeInUp 0.5s ease both;
+}
+.panel-card::before {
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--neon-cyan),transparent);opacity:0.4;
+}
+.panel-card:hover{border-color:rgba(0,212,255,0.5);box-shadow:var(--glow-sm)}
+.panel-card:nth-child(1){animation-delay:0.1s}
+.panel-card:nth-child(2){animation-delay:0.2s}
+.panel-card:nth-child(3){animation-delay:0.3s}
+.panel-card:nth-child(4){animation-delay:0.4s}
+.card-title {
+  font-family:var(--font-display);font-size:8px;
+  letter-spacing:3px;color:var(--neon-cyan);
+  text-transform:uppercase;margin-bottom:10px;opacity:0.8;
+}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ═══════════════════════════════════════════
+   JOYSTICK
+═══════════════════════════════════════════ */
+.joystick-zone {
+  width: 130px; height: 130px; margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,rgba(0,212,255,0.08) 0%,rgba(0,30,60,0.6) 60%,rgba(0,10,25,0.8) 100%);
+  border: 1px solid var(--border-glow);
+  box-shadow: 0 0 20px rgba(0,212,255,0.1), inset 0 0 20px rgba(0,0,0,0.4);
+  position: relative; overflow: hidden; cursor: pointer;
+  touch-action: none;
+}
+.joystick-zone::before {
+  content:'';position:absolute;inset:0;border-radius:50%;
+  background:repeating-radial-gradient(circle at center,transparent 0px,transparent 18px,rgba(0,212,255,0.04) 18px,rgba(0,212,255,0.04) 19px);
+}
+
+/* ═══════════════════════════════════════════
+   D-PAD BUTTONS
+═══════════════════════════════════════════ */
+.dpad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr); gap: 3px;
+  width: 110px; height: 110px; margin: 0 auto;
+}
+.dpad-btn {
+  background: var(--bg-glass); border: 1px solid var(--border-glow);
+  border-radius: 3px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s ease; color: var(--neon-cyan);
+  font-size: 14px; position: relative; overflow: hidden;
+  touch-action: none;
+}
+.dpad-btn::after{content:'';position:absolute;inset:0;background:rgba(0,212,255,0.2);opacity:0;transition:opacity 0.15s}
+.dpad-btn:hover{border-color:var(--neon-cyan);box-shadow:var(--glow-sm)}
+.dpad-btn:active::after,.dpad-btn.active::after{opacity:1}
+.dpad-btn:active{transform:scale(0.92)}
+.dpad-center{background:rgba(255,34,68,0.15);border-color:rgba(255,34,68,0.3)}
+.dpad-center:hover{border-color:var(--neon-red);box-shadow:0 0 8px rgba(255,34,68,0.4)}
+.dpad-empty{background:transparent;border:none;pointer-events:none}
+
+/* ═══════════════════════════════════════════
+   SLIDERS
+═══════════════════════════════════════════ */
+.slider-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.slider-label{font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-secondary);width:40px;flex-shrink:0}
+.slider-value{font-family:var(--font-mono);font-size:9px;color:var(--neon-cyan);width:26px;flex-shrink:0;text-align:right}
+input[type="range"]{flex:1;-webkit-appearance:none;appearance:none;height:3px;border-radius:2px;outline:none;cursor:pointer;background:rgba(0,212,255,0.15)}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--neon-cyan);box-shadow:0 0 8px var(--neon-cyan);cursor:pointer}
+input[type="range"]::-webkit-slider-thumb:hover{box-shadow:0 0 14px var(--neon-cyan)}
+
+/* ═══════════════════════════════════════════
+   ACTION BUTTONS
+═══════════════════════════════════════════ */
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.action-btn {
+  padding: 8px 6px; border-radius: 3px;
+  border: 1px solid var(--border-glow); background: var(--bg-glass);
+  color: var(--text-primary); font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 1px; cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  position: relative; overflow: hidden;
+}
+.action-btn .btn-icon{font-size:16px}
+.action-btn:hover{border-color:var(--neon-cyan);background:rgba(0,212,255,0.08);box-shadow:var(--glow-sm);transform:translateY(-1px)}
+.action-btn:active{transform:scale(0.96)}
+.action-btn.capture{border-color:rgba(0,255,136,0.3)}
+.action-btn.capture:hover{border-color:var(--neon-green);box-shadow:0 0 8px rgba(0,255,136,0.4)}
+.action-btn.record{border-color:rgba(255,34,68,0.3)}
+.action-btn.record:hover{border-color:var(--neon-red);box-shadow:0 0 8px rgba(255,34,68,0.4)}
+.action-btn.record.active{background:rgba(255,34,68,0.15);border-color:var(--neon-red);box-shadow:0 0 12px rgba(255,34,68,0.5)}
+.action-btn.estop{grid-column:span 2;border-color:rgba(255,34,68,0.5);background:rgba(255,34,68,0.08);color:var(--neon-red);padding:10px;font-size:10px;letter-spacing:2px}
+.action-btn.estop:hover{background:rgba(255,34,68,0.2);border-color:var(--neon-red);box-shadow:0 0 20px rgba(255,34,68,0.5)}
+.ripple{position:absolute;border-radius:50%;background:rgba(0,212,255,0.3);transform:scale(0);animation:rippleAnim 0.5s ease-out;pointer-events:none}
+@keyframes rippleAnim{to{transform:scale(4);opacity:0}}
+
+/* ═══════════════════════════════════════════
+   FPS DISPLAY
+═══════════════════════════════════════════ */
+.fps-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 6px;
+}
+.fps-badge {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--neon-green); letter-spacing: 1px;
+}
+.ws-badge {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+}
+.ws-badge.online { color: var(--neon-green); }
+.ws-badge.offline { color: var(--neon-red); }
+
+/* ═══════════════════════════════════════════
+   BOTTOM BAR
+═══════════════════════════════════════════ */
+#bottomBar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; background: rgba(0,10,25,0.92);
+  border-top: 1px solid var(--border-glow);
+  backdrop-filter: blur(12px); flex-wrap: wrap; gap: 6px;
+}
+.bot-item{font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:var(--text-muted)}
+.bot-item span{color:var(--neon-cyan)}
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+#toast {
+  position: fixed; bottom: 70px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(0,20,40,0.96); border: 1px solid var(--neon-cyan);
+  border-radius: 3px; padding: 6px 18px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px;
+  color: var(--neon-cyan); box-shadow: var(--glow-md);
+  opacity: 0; transition: all 0.3s ease; pointer-events: none;
+  z-index: 1000; white-space: nowrap;
+}
+#toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE — MOBILE PORTRAIT / TABLET
+═══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  #mainContent {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    height: auto; overflow: visible;
+    padding-bottom: 60px;
+  }
+  #cameraPanel { height: 56vw; min-height: 200px; max-height: 280px; }
+  #sidePanel {
+    flex-direction: row; flex-wrap: wrap;
+    overflow-y: visible; padding: 8px;
+  }
+  #sidePanel .panel-card { flex: 1 1 140px; min-width: 130px; }
+  #app { grid-template-rows: auto auto auto; }
+  .top-logo { font-size: 8px; letter-spacing: 1px; }
+  .sys-time { font-size: 10px; }
+  #bottomBar { padding: 6px 10px; }
+}
+@media (max-width: 480px) {
+  #cameraPanel { height: 60vw; min-height: 180px; }
+  .joystick-zone { width: 110px; height: 110px; }
+  .dpad { width: 100px; height: 100px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOADING SCREEN ══ -->
+<div id="loadScreen">
+  <div class="load-logo">ESP32 SURVEILLANCE SYSTEM</div>
+  <div class="load-bar-wrap"><div class="load-bar"></div></div>
+  <div class="load-status" id="loadStatus">INITIALIZING SYSTEMS...</div>
+</div>
+
+<!-- ══ IP CONFIG OVERLAY ══ -->
+<div id="ipOverlay">
+  <div class="ip-box">
+    <div class="ip-title">CONNECT TO ESP32</div>
+    <div class="ip-sub">Enter the IP address of your ESP32-CAM module</div>
+    <div class="ip-hint">
+      Default WiFi: <span>MyWiFiCar</span> &nbsp;|&nbsp; Password: <span>12345678</span><br>
+      Default IP: <span>192.168.4.1</span>
+    </div>
+    <input class="ip-input" id="ipInput" type="text"
+           inputmode="decimal" placeholder="192.168.4.1" value="192.168.4.1" />
+    <button class="ip-btn" onclick="connectToESP32()">▶ ESTABLISH CONNECTION</button>
+  </div>
+</div>
+
+<!-- ══ BG EFFECTS ══ -->
+<div class="scan-grid"></div>
+<div class="scan-line"></div>
+<div id="toast"></div>
+
+<!-- ══ MAIN APP ══ -->
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topBar">
+    <div class="top-logo">ESP32 <span>// </span>SURVEILLANCE CONTROL SYSTEM</div>
+    <div class="status-pills">
+      <!-- WiFi pill -->
+      <div class="pill" id="wifiPill">
+        <div class="wifi-bars sig-0" id="wifiBars">
+          <div class="wifi-bar"></div><div class="wifi-bar"></div>
+          <div class="wifi-bar"></div><div class="wifi-bar"></div>
+        </div>
+        <span id="wifiText">NO SIGNAL</span>
+      </div>
+      <!-- WS control status -->
+      <div class="pill" id="wsPill">
+        <div class="dot" id="wsStatusDot"></div>
+        <span id="wsStatusText">CTRL: OFFLINE</span>
+      </div>
+      <!-- WS camera status -->
+      <div class="pill" id="wsCamPill">
+        <div class="dot" id="wsCamDot"></div>
+        <span id="wsCamText">CAM: OFFLINE</span>
+      </div>
+      <div class="sys-time" id="sysTime">--:--:--</div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div id="mainContent">
+
+    <!-- ── CAMERA PANEL ── -->
+    <div id="cameraPanel">
+      <div class="cam-frame">
+        <!-- Camera rendered as <img> from WebSocket blob URL -->
+        <img id="cameraFeed" src="" alt="" />
+        <div class="no-feed-msg" id="noFeedMsg">
+          AWAITING CAMERA STREAM<br>
+          <span style="font-size:9px;opacity:0.6">ws://[IP]/Camera</span>
+        </div>
+
+        <div class="cam-scanlines"></div>
+        <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+        <div class="crosshair"><div class="crosshair-circle"></div></div>
+
+        <div class="cam-overlay cam-timestamp" id="camTimestamp">-- / -- / ----   --:--:-- UTC</div>
+        <div class="cam-overlay cam-rec" id="camRec">
+          <div class="rec-dot paused" id="recDot"></div>
+          <span id="recText">STANDBY</span>
+        </div>
+        <div class="cam-overlay cam-coord">LAT: 00.000°N &nbsp; LON: 00.000°E</div>
+        <div class="cam-overlay cam-fps" id="camFpsOverlay">FPS: -- &nbsp; RES: VGA</div>
+        <div class="motion-alert" id="motionAlert">⚠ MOTION DETECTED</div>
+      </div>
+    </div>
+
+    <!-- ── SIDE PANEL ── -->
+    <div id="sidePanel">
+
+      <!-- JOYSTICK -->
+      <div class="panel-card">
+        <div class="card-title">◈ JOYSTICK CONTROL</div>
+        <div class="joystick-zone" id="joystickZone"></div>
+        <div class="fps-row" style="margin-top:8px">
+          <span class="fps-badge" id="fpsBadge">FPS: --</span>
+          <span class="ws-badge offline" id="wsBadgeCtrl">CTRL WS</span>
+          <span class="ws-badge offline" id="wsBadgeCam">CAM WS</span>
+        </div>
+      </div>
+
+      <!-- D-PAD -->
+      <div class="panel-card">
+        <div class="card-title">◈ DIRECTIONAL KEYS</div>
+        <div class="dpad">
+          <div class="dpad-empty"></div>
+          <div class="dpad-btn" id="btnFwd"
+               onmousedown="startMove(1)" onmouseup="stopMove()"
+               ontouchstart="evStart(event,1)" ontouchend="evStop(event)">▲</div>
+          <div class="dpad-empty"></div>
+          <div class="dpad-btn" id="btnLeft"
+               onmousedown="startMove(3)" onmouseup="stopMove()"
+               ontouchstart="evStart(event,3)" ontouchend="evStop(event)">◄</div>
+          <div class="dpad-btn dpad-center" id="btnStop"
+               onmousedown="startMove(0)"
+               ontouchstart="evStart(event,0)">■</div>
+          <div class="dpad-btn" id="btnRight"
+               onmousedown="startMove(4)" onmouseup="stopMove()"
+               ontouchstart="evStart(event,4)" ontouchend="evStop(event)">►</div>
+          <div class="dpad-empty"></div>
+          <div class="dpad-btn" id="btnBack"
+               onmousedown="startMove(2)" onmouseup="stopMove()"
+               ontouchstart="evStart(event,2)" ontouchend="evStop(event)">▼</div>
+          <div class="dpad-empty"></div>
+        </div>
+      </div>
+
+      <!-- SLIDERS -->
+      <div class="panel-card">
+        <div class="card-title">◈ POWER CONTROLS</div>
+        <div class="slider-row">
+          <span class="slider-label">SPEED</span>
+          <input type="range" id="speedSlider" min="0" max="255" value="150"
+                 oninput="updateSpeed(this.value)" />
+          <span class="slider-value" id="speedVal">150</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-label">LIGHT</span>
+          <input type="range" id="lightSlider" min="0" max="255" value="0"
+                 oninput="updateLight(this.value)" />
+          <span class="slider-value" id="lightVal">0</span>
+        </div>
+      </div>
+
+      <!-- ACTIONS -->
+      <div class="panel-card">
+        <div class="card-title">◈ ACTIONS</div>
+        <div class="action-grid">
+          <button class="action-btn capture" onclick="captureImage(this)">
+            <span class="btn-icon">📷</span>CAPTURE
+          </button>
+          <button class="action-btn record" id="recordBtn" onclick="toggleRecord(this)">
+            <span class="btn-icon">⏺</span>RECORD
+          </button>
+          <button class="action-btn estop" onclick="emergencyStop(this)">
+            ⚡ EMERGENCY STOP
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /sidePanel -->
+  </div><!-- /mainContent -->
+
+  <!-- BOTTOM BAR -->
+  <div id="bottomBar">
+    <div class="bot-item">SSID: <span>MyWiFiCar</span></div>
+    <div class="bot-item">IP: <span id="botIp">--</span></div>
+    <div class="bot-item">CMD: <span id="botLastCmd">--</span></div>
+    <div class="bot-item">PKTS: <span id="botPkts">0</span></div>
+    <div class="bot-item">FORMAT: <span>key,value</span></div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════ -->
+<script>
+/* ─────────────────────────────────────────────
+   GLOBAL STATE
+───────────────────────────────────────────── */
+let ESP_IP         = "192.168.4.1";
+let wsControl      = null;   // ws://IP/CarInput  — text commands
+let wsCamera       = null;   // ws://IP/Camera    — binary JPEG frames
+let ctrlConnected  = false;
+let camConnected   = false;
+let isRecording    = false;
+let pktCount       = 0;
+let currentSpeed   = 150;
+let currentLight   = 0;
+let currentDir     = 0;
+let frameCount     = 0;
+let lastFpsTime    = Date.now();
+let realFps        = 0;
+
+/* ─────────────────────────────────────────────
+   LOADING SEQUENCE
+───────────────────────────────────────────── */
+const loadSteps = [
+  "INITIALIZING SYSTEMS...",
+  "LOADING SURVEILLANCE MODULES...",
+  "CALIBRATING MOTOR DRIVERS...",
+  "SETTING UP WEBSOCKETS...",
+  "READY"
+];
+let loadIdx = 0;
+const loadStatusEl = document.getElementById("loadStatus");
+const loadInterval = setInterval(() => {
+  loadIdx++;
+  if (loadIdx < loadSteps.length) {
+    loadStatusEl.textContent = loadSteps[loadIdx];
+  } else {
+    clearInterval(loadInterval);
+    setTimeout(() => {
+      document.getElementById("loadScreen").classList.add("hidden");
+    }, 300);
+  }
+}, 560);
+
+/* ─────────────────────────────────────────────
+   CONNECT BUTTON
+───────────────────────────────────────────── */
+function connectToESP32() {
+  const val = document.getElementById("ipInput").value.trim();
+  if (!val) return;
+  ESP_IP = val;
+  document.getElementById("botIp").textContent = ESP_IP;
+  document.getElementById("ipOverlay").classList.add("hidden");
+  initControlWS();
+  initCameraWS();
+  showToast("CONNECTING TO " + ESP_IP + "...");
+}
+
+// Also allow pressing Enter in the IP input
+document.getElementById("ipInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") connectToESP32();
+});
+
+/* ─────────────────────────────────────────────
+   WEBSOCKET — CONTROL  (ws://IP/CarInput)
+   Command format: "key,value"  (comma-separated)
+   Examples: "MoveCar,1"  "Speed,150"  "Light,255"
+───────────────────────────────────────────── */
+function initControlWS() {
+  if (wsControl) { try { wsControl.close(); } catch(e){} }
+
+  wsControl = new WebSocket(`ws://${ESP_IP}/CarInput`);
+
+  wsControl.onopen = () => {
+    ctrlConnected = true;
+    updatePillStatus("ctrl", true);
+    showToast("CONTROL WS ONLINE");
+    // Send initial speed & light on connect (matches ESP32 behaviour)
+    sendCommand("Speed," + currentSpeed);
+    sendCommand("Light," + currentLight);
+  };
+
+  wsControl.onclose = () => {
+    ctrlConnected = false;
+    updatePillStatus("ctrl", false);
+    // Auto-reconnect after 3 s
+    setTimeout(initControlWS, 3000);
+  };
+
+  wsControl.onerror = () => {
+    showToast("CTRL WS ERROR — RETRYING...");
+  };
+
+  wsControl.onmessage = (e) => {
+    // ESP32 may send status messages; log them
+    console.log("[CarInput WS]", e.data);
+  };
+}
+
+/* ─────────────────────────────────────────────
+   WEBSOCKET — CAMERA  (ws://IP/Camera)
+   ESP32 sends binary JPEG blobs.
+   We create a blob URL and set it on the <img>.
+───────────────────────────────────────────── */
+function initCameraWS() {
+  if (wsCamera) { try { wsCamera.close(); } catch(e){} }
+
+  wsCamera = new WebSocket(`ws://${ESP_IP}/Camera`);
+  wsCamera.binaryType = "blob";
+
+  wsCamera.onopen = () => {
+    camConnected = true;
+    updatePillStatus("cam", true);
+    document.getElementById("noFeedMsg").style.display = "none";
+    showToast("CAMERA STREAM ONLINE");
+  };
+
+  wsCamera.onclose = () => {
+    camConnected = false;
+    updatePillStatus("cam", false);
+    document.getElementById("noFeedMsg").style.display = "";
+    // Auto-reconnect after 2 s
+    setTimeout(initCameraWS, 2000);
+  };
+
+  wsCamera.onerror = () => {
+    showToast("CAM WS ERROR — RETRYING...");
+  };
+
+  wsCamera.onmessage = (e) => {
+    // Revoke previous blob URL to avoid memory leak
+    const img = document.getElementById("cameraFeed");
+    if (img.src && img.src.startsWith("blob:")) {
+      URL.revokeObjectURL(img.src);
+    }
+    // Create new blob URL from binary JPEG data
+    const blob = new Blob([e.data], { type: "image/jpeg" });
+    img.src = URL.createObjectURL(blob);
+
+    // Count frames for real FPS
+    frameCount++;
+    const now = Date.now();
+    const elapsed = now - lastFpsTime;
+    if (elapsed >= 1000) {
+      realFps = Math.round((frameCount * 1000) / elapsed);
+      frameCount = 0;
+      lastFpsTime = now;
+      document.getElementById("fpsBadge").textContent = `FPS: ${realFps}`;
+      document.getElementById("camFpsOverlay").textContent = `FPS: ${realFps}  RES: VGA`;
+    }
+  };
+}
+
+/* ─────────────────────────────────────────────
+   SEND COMMAND
+   Format that ESP32 expects: "key,value"
+   e.g.  "MoveCar,1"  or  "Speed,150"  or "Light,255"
+───────────────────────────────────────────── */
+function sendCommand(cmd) {
+  if (!wsControl || wsControl.readyState !== WebSocket.OPEN) return;
+  wsControl.send(cmd);
+  pktCount++;
+  document.getElementById("botPkts").textContent = pktCount;
+  document.getElementById("botLastCmd").textContent = cmd;
+}
+
+/* ─────────────────────────────────────────────
+   MOVEMENT
+───────────────────────────────────────────── */
+function sendMove(dir) {
+  sendCommand("MoveCar," + dir);
+  sendCommand("Speed," + currentSpeed);
+}
+
+let moveInterval = null;
+
+function startMove(dir) {
+  currentDir = dir;
+  highlightDpad(dir);
+  sendMove(dir);
+  clearInterval(moveInterval);
+  if (dir !== 0) {
+    moveInterval = setInterval(() => sendMove(dir), 150);
+  }
+  const names = ["STOP","FORWARD","BACKWARD","LEFT","RIGHT"];
+  showToast(names[dir] + " ▶");
+}
+
+function stopMove() {
+  clearInterval(moveInterval);
+  currentDir = 0;
+  sendMove(0);
+  highlightDpad(-1);
+}
+
+// Touch helpers — prevent default scroll/zoom on dpad
+function evStart(e, dir) {
+  e.preventDefault();
+  startMove(dir);
+}
+function evStop(e) {
+  e.preventDefault();
+  stopMove();
+}
+
+function highlightDpad(dir) {
+  ["btnFwd","btnBack","btnLeft","btnRight","btnStop"].forEach(id => {
+    document.getElementById(id)?.classList.remove("active");
+  });
+  const map = {0:"btnStop",1:"btnFwd",2:"btnBack",3:"btnLeft",4:"btnRight"};
+  if (map[dir] !== undefined) document.getElementById(map[dir])?.classList.add("active");
+}
+
+/* ─────────────────────────────────────────────
+   SPEED & LIGHT
+───────────────────────────────────────────── */
+function updateSpeed(val) {
+  currentSpeed = parseInt(val);
+  document.getElementById("speedVal").textContent = currentSpeed;
+  sendCommand("Speed," + currentSpeed);
+}
+
+function updateLight(val) {
+  currentLight = parseInt(val);
+  document.getElementById("lightVal").textContent = currentLight;
+  sendCommand("Light," + currentLight);
+}
+
+/* ─────────────────────────────────────────────
+   NIPPLE.JS JOYSTICK
+───────────────────────────────────────────── */
+window.addEventListener("DOMContentLoaded", () => {
+  const zone = document.getElementById("joystickZone");
+  const manager = nipplejs.create({
+    zone: zone,
+    mode: "static",
+    position: { left: "50%", top: "50%" },
+    color: "rgba(0,212,255,0.7)",
+    size: 80,
+    restOpacity: 0.5,
+    threshold: 0.2,
+    catchDistance: 150
+  });
+
+  let joyInterval = null;
+
+  manager.on("move", (evt, data) => {
+    clearInterval(joyInterval);
+    const angle = data.angle.degree;
+    // nipple.js: 0°=right, 90°=up, 180°=left, 270°=down
+    let dir;
+    if      (angle >= 45  && angle < 135) dir = 1; // Forward
+    else if (angle >= 135 && angle < 225) dir = 3; // Left
+    else if (angle >= 225 && angle < 315) dir = 2; // Backward
+    else                                  dir = 4; // Right
+
+    // Dynamic speed proportional to joystick force
+    const force = Math.min(data.force, 1);
+    const dynSpeed = Math.round(80 + force * 175);
+    currentSpeed = Math.min(dynSpeed, 255);
+    document.getElementById("speedSlider").value    = currentSpeed;
+    document.getElementById("speedVal").textContent = currentSpeed;
+
+    if (dir !== currentDir) {
+      currentDir = dir;
+      highlightDpad(dir);
+    }
+    sendMove(dir);
+    joyInterval = setInterval(() => sendMove(dir), 150);
+  });
+
+  manager.on("end", () => {
+    clearInterval(joyInterval);
+    stopMove();
+  });
+});
+
+/* ─────────────────────────────────────────────
+   CAPTURE IMAGE
+───────────────────────────────────────────── */
+function captureImage(btn) {
+  rippleEffect(btn, event);
+  const img = document.getElementById("cameraFeed");
+  if (!img.src || !img.src.startsWith("blob:")) {
+    showToast("NO FRAME — CAMERA NOT STREAMING");
+    return;
+  }
+  showToast("CAPTURING FRAME...");
+  // Draw current frame onto canvas then download
+  const canvas = document.createElement("canvas");
+  canvas.width  = img.naturalWidth  || 640;
+  canvas.height = img.naturalHeight || 480;
+  canvas.getContext("2d").drawImage(img, 0, 0);
+  const a = document.createElement("a");
+  a.href     = canvas.toDataURL("image/jpeg", 0.92);
+  a.download = `ESP32_CAP_${Date.now()}.jpg`;
+  a.click();
+  showToast("FRAME SAVED ✓");
+}
+
+/* ─────────────────────────────────────────────
+   RECORD TOGGLE
+───────────────────────────────────────────── */
+function toggleRecord(btn) {
+  isRecording = !isRecording;
+  const recDot  = document.getElementById("recDot");
+  const recText = document.getElementById("recText");
+  if (isRecording) {
+    btn.classList.add("active");
+    recDot.classList.remove("paused");
+    recText.textContent = "REC";
+    showToast("RECORDING STARTED ⏺");
+  } else {
+    btn.classList.remove("active");
+    recDot.classList.add("paused");
+    recText.textContent = "STANDBY";
+    showToast("RECORDING STOPPED ■");
+  }
+  rippleEffect(btn, event);
+}
+
+/* ─────────────────────────────────────────────
+   EMERGENCY STOP
+───────────────────────────────────────────── */
+function emergencyStop(btn) {
+  rippleEffect(btn, event);
+  clearInterval(moveInterval);
+  sendCommand("MoveCar,0");
+  sendCommand("Speed,0");
+  currentSpeed = 0; currentDir = 0;
+  document.getElementById("speedSlider").value    = 0;
+  document.getElementById("speedVal").textContent = 0;
+  highlightDpad(-1);
+  showToast("⚡ EMERGENCY STOP");
+  document.body.style.outline = "3px solid rgba(255,34,68,0.9)";
+  setTimeout(() => document.body.style.outline = "", 500);
+}
+
+/* ─────────────────────────────────────────────
+   UI STATUS HELPERS
+───────────────────────────────────────────── */
+function updatePillStatus(type, online) {
+  if (type === "ctrl") {
+    const pill = document.getElementById("wsPill");
+    const dot  = document.getElementById("wsStatusDot");
+    const txt  = document.getElementById("wsStatusText");
+    const badge= document.getElementById("wsBadgeCtrl");
+    pill.classList.toggle("online", online);
+    txt.textContent = "CTRL: " + (online ? "ONLINE" : "OFFLINE");
+    badge.className = "ws-badge " + (online ? "online" : "offline");
+    badge.textContent = online ? "CTRL ✓" : "CTRL ✗";
+    // WiFi indicator
+    if (online) {
+      document.getElementById("wifiBars").className = "wifi-bars sig-4";
+      document.getElementById("wifiText").textContent = "CONNECTED";
+      document.getElementById("wifiPill").classList.add("online");
+    } else {
+      document.getElementById("wifiBars").className = "wifi-bars sig-1";
+      document.getElementById("wifiText").textContent = "RECONNECTING";
+      document.getElementById("wifiPill").classList.remove("online");
+    }
+  } else if (type === "cam") {
+    const pill = document.getElementById("wsCamPill");
+    const dot  = document.getElementById("wsCamDot");
+    const txt  = document.getElementById("wsCamText");
+    const badge= document.getElementById("wsBadgeCam");
+    pill.classList.toggle("online", online);
+    txt.textContent = "CAM: " + (online ? "ONLINE" : "OFFLINE");
+    badge.className = "ws-badge " + (online ? "online" : "offline");
+    badge.textContent = online ? "CAM ✓" : "CAM ✗";
+  }
+}
+
+/* ─────────────────────────────────────────────
+   TOAST
+───────────────────────────────────────────── */
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("visible"), 2000);
+}
+
+/* ─────────────────────────────────────────────
+   RIPPLE EFFECT
+───────────────────────────────────────────── */
+function rippleEffect(btn, e) {
+  if (!e) return;
+  const r = document.createElement("span");
+  r.className = "ripple";
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  r.style.width = r.style.height = size + "px";
+  r.style.left = ((e.clientX||0) - rect.left - size/2) + "px";
+  r.style.top  = ((e.clientY||0) - rect.top  - size/2) + "px";
+  btn.appendChild(r);
+  setTimeout(() => r.remove(), 500);
+}
+
+/* ─────────────────────────────────────────────
+   CLOCK
+───────────────────────────────────────────── */
+function tickClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,"0");
+  document.getElementById("sysTime").textContent =
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const dateStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()}`;
+  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} UTC`;
+  document.getElementById("camTimestamp").textContent = `${dateStr}   ${timeStr}`;
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+/* ─────────────────────────────────────────────
+   KEYBOARD CONTROLS (WASD + Arrows)
+───────────────────────────────────────────── */
+const keyMap = {
+  "ArrowUp":"w","w":"w","W":"w",
+  "ArrowDown":"s","s":"s","S":"s",
+  "ArrowLeft":"a","a":"a","A":"a",
+  "ArrowRight":"d","d":"d","D":"d",
+  " ":"space"
+};
+const keyDir = {"w":1,"s":2,"a":3,"d":4,"space":0};
+let heldKey = null;
+
+document.addEventListener("keydown", (e) => {
+  const k = keyMap[e.key];
+  if (!k || heldKey === k) return;
+  heldKey = k;
+  startMove(keyDir[k]);
+  e.preventDefault();
+});
+document.addEventListener("keyup", (e) => {
+  const k = keyMap[e.key];
+  if (!k) return;
+  heldKey = null;
+  if (keyDir[k] !== 0) stopMove();
+});
+
+/* ─────────────────────────────────────────────
+   SERVICE WORKER REGISTRATION (PWA)
+───────────────────────────────────────────── */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js")
+      .then(() => console.log("[PWA] Service Worker registered"))
+      .catch(err => console.log("[PWA] SW registration failed:", err));
+  });
+}
+</script>
+</body>
+</html>
