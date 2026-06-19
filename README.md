@@ -88,8 +88,7 @@ Open the web dashboard in your browser or deploy it using Vercel.
 Example:
 
 ```
-https://esp32-surveillance-car.vercel.app
-```
+https://esp-32-surveillance-ac359jyl1-lavanyajoshi1404s-projects.vercel.app/
 
 ---
 
